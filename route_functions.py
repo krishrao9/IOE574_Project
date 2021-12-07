@@ -62,14 +62,14 @@ def route_time(routes, route_c, t):
             t_ser = rand.gamma(sm_data[search_r+'_mean'][i], 
                                  sm_data[search_r+'_std'][i])         # change distributions
             t = t + t_ser
-        time_ar.append(round(t, 4))
+        time_ar.append(round(t, 2))
     stops = np.array(sm_data[search_r+'_index'])
     return list(time_ar), list(stops)
 
 
 class bus:
     def __init__(self, charge, charge_std):          # Class initialization
-        self.charge = rand.normal(charge, charge_std)
+        self.charge = round(rand.normal(charge, charge_std), 3)
         self.state = -1          # deployed = 1, refill = 0, standstill = -1
         self.route = None        # route in string, eg. '1', 'refill', 'recharge' 
         self.time_arr = list()   # array containing travel or stop service times for the bus
@@ -112,19 +112,17 @@ class bus:
 def gen_demands(routes, T):
     dem = pd.read_excel('Model_Parameters.xlsx', 'Demands')
     t_arr = np.array(range(0, T, 60))
-    print(t_arr)
     demand_r, demand_t, demand_c = [], [], []
     for row in dem.itertuples(index=False):
         if row[0]<=routes:
             # denerating demands
             route, a, b, c, d, charge = np.str_(row[0]), row[1], row[2], row[3], row[4], row[5]
             demand = np.ceil(a*np.sin((t_arr+c)/d) + b)             # a distribution can also be used
-            print(demand)
             # generating times wrt demands
             for i, t in enumerate(t_arr):
                 if demand[i]>0:
                     for t_d in range(0, 60, int(60/demand[i])):
-                        demand_t.append(round(t + t_d, 4))
+                        demand_t.append(round(t + t_d, 2))
                         demand_r.append(route)
                         demand_c.append(charge)
 
