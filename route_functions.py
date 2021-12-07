@@ -226,6 +226,253 @@ def BD_update(BD_table, t_updt, dem_ct, dem_at, dem_c, buses, index):
     bd_d['Time_Array'] = np.array(buses[index].time_arr)
     BD_table = BD_table.append(bd_d, ignore_index=True)
     return BD_table
-# -
 
+
+# -
+def fleet_simulation(t, T, routes, buses, refuel, running_consumption, service_consumption, 
+                     refuel_stations, refuel_consumption, conversion_factor,
+                     demand_at, demand_ct, demand_r, demand_c, dct_flag, SS_cols, BD_cols):
+    ss_table = pd.DataFrame(columns=SS_cols)
+    bd_table = pd.DataFrame(columns=BD_cols)
+
+    # Initial SS update
+    time_check = np.inf
+    ss_table = SS_update(ss_table, t, buses, dct_flag, np.nan, np.nan)
+    
+    # previous times for fleet
+    prev_time = [np.nan]*len(buses)
+    
+    # Simulate! Simulate! Simulate!        
+    while (t<T)or(time_check!=np.inf):
+        #print('---\nNew Event')
+
+        time_check = min(next_bus_e(buses)[0], demand_ct[0])
+        #print('\tTime check -', time_check)
+
+        # -----
+        # Priority One: Updating demands
+        if ((demand_ct[0]!=np.inf) and
+            (demand_ct[0]==time_check)):
+            new_demand = [1 for i in range(len(demand_ct)) if demand_ct[i]==time_check]
+            dct_flag = sum(new_demand)
+            # testing
+            t = time_check
+            
+        ##print('\tDemands -', demand_ct[:10], demand_at[:10], demand_r[:10], demand_c[:10])
+        ##print('\tdct_flag -', dct_flag)
+
+
+        #----------
+        # Main Simulation
+        bus_chk = available_bus(buses, demand_c[0])
+        #print('\tBus Check -', bus_chk)
+
+
+        #-----
+        # Case 1: Sending low-fuel buses to refuel
+        refuel_index = unavailable_bus(buses, min(demand_c))
+        if (#(t<T) and
+            (refuel_index!=-1) and
+            (buses_status(buses)[1]<refuel_stations)): 
+            # or((dct_flag>0)and(refuel_index!=np.inf)):- might create complications
+            dem_ct, dem_at, dem_c = np.nan, np.nan, np.nan
+            #print('\tSending Bus for Refuel')
+            buses[refuel_index].assign_route(routes, refuel, t)
+            prev_time[refuel_index] = t
+            bus_e = 0
+            t_updt = t
+
+            ss_table = SS_update(ss_table, t, buses, dct_flag, bus_e, t_updt, refuel_index)
+            bd_table = BD_update(bd_table, t_updt, dem_ct, dem_at, dem_c, buses, refuel_index)
+
+            t = t_updt
+            #refuel_index = -1
+
+
+        #-----
+        # Case 2: Checking bus availability and deploying buses
+        elif ((t<T) and
+              (demand_ct[0]==time_check) and
+              (demand_ct[0]!=np.inf) and
+              (bus_chk!=-1)):
+
+            #print('\tDeploying Bus')
+            dem_ct, dem_at = demand_ct.pop(0), demand_at.pop(0)
+            dem_c, dem_r = demand_c.pop(0), demand_r.pop(0)
+            index = available_bus(buses, dem_c)
+            t_updt = dem_ct
+            buses[index].assign_route(routes, dem_r, t_updt)
+            prev_time[index] = t_updt
+            bus_e = 0
+
+            ss_table = SS_update(ss_table, t, buses, dct_flag, bus_e, t_updt, index, dem_ct, dem_at, dem_c)
+            bd_table = BD_update(bd_table, t_updt, dem_ct, dem_at, dem_c, buses, index)
+            ##print(buses[index].event_arr, buses[index].time_arr)
+            dct_flag -= 1
+            ##print(prev_time[index], t_updt)
+            t = t_updt
+
+            dem_ct, dem_at, dem_c, dem_r = np.nan, np.nan, np.nan, np.nan
+            t_updt = np.nan
+            index = np.nan
+
+
+        #-----
+        # Case 3: Checking next bus event and updating SS
+        elif ((t<T) and
+              (next_bus_e(buses)[0]==time_check) and 
+              (next_bus_e(buses)[0]!=np.inf) and 
+              ((buses_status(buses)[0]>0) or (buses_status(buses)[1]>0))):
+
+            #print('\tUpdating next bus event')
+            index = next_bus_e(buses)[2]
+            t_updt = buses[index].time_arr.pop(0)
+            bus_e = buses[index].event_arr.pop(0)
+            diff_t = prev_time[index]
+            
+            if (bus_e==1):
+                mul_c = running_consumption
+            elif (bus_e==0)and(buses[index].state==1):
+                mul_c = service_consumption
+            elif (bus_e==0)and(buses[index].state==0):                       # different for 'refill' and 'recharge' 
+                mul_c = refuel_consumption                                   # difference from 90 for refill
+            buses[index].charge = round(buses[index].charge - (t_updt - diff_t)*mul_c*conversion_factor, 3)
+
+            ss_table = SS_update(ss_table, diff_t, buses, dct_flag, bus_e, t_updt, index)
+            t = t_updt
+            prev_time[index] = t
+            
+            # if its the last event for the bus, update bus parameters to standstill
+            if buses[index].next_e()==np.inf:
+                buses[index].state = -1
+                buses[index].route = None
+                buses[index].time_arr = list()
+                buses[index].event_arr = list()
+                prev_time[index] = np.nan
+            index = np.nan
+            t_updt = np.nan
+            bus_e = np.nan
+        
+        
+        #-----
+        # Case 4: Jumping to next demand 
+        elif ((t<T) and
+              (demand_ct[0]==time_check) and 
+              (demand_ct[0]!=np.inf) and 
+              (bus_chk==-1)):
+            #print('\tJumping to next demand')
+            t = demand_ct[dct_flag].copy()
+            #dct_flag += 1
+        
+              
+        #-----
+        # Case 5: All demands are completed within the timeframe 
+        elif ((t<T) and
+              (time_check==np.inf)):
+
+            #print('\tJumping to EOD')
+            t_updt = T
+
+            ss_table = SS_update(ss_table, t, buses, dct_flag, bus_e, t_updt)
+            t = t_updt    
+
+
+        #-----
+        # Case 6: Demands still exist beyond timeframe and need to be met
+        elif ((t>T) and
+              (demand_ct[0]==time_check) and
+              (demand_ct[0]!=np.inf) and
+              (bus_chk!=-1)):
+
+            #print('\tDeploying Bus beyond timeframe')
+            dem_ct, dem_at = demand_ct.pop(0), demand_at.pop(0)
+            dem_c, dem_r = demand_c.pop(0), demand_r.pop(0)
+            index = available_bus(buses, dem_c)
+            t_updt = dem_ct
+            buses[index].assign_route(routes, dem_r, t_updt)
+            prev_time[index] = t_updt
+            bus_e = 0
+
+            ss_table = SS_update(ss_table, t, buses, dct_flag, bus_e, t_updt, index, dem_ct, dem_at, dem_c)
+            bd_table = BD_update(bd_table, t_updt, dem_ct, dem_at, dem_c, buses, index)
+            dct_flag -= 1
+            t = t_updt
+
+            dem_ct, dem_at, dem_c, dem_r = np.nan, np.nan, np.nan, np.nan
+            t_updt = np.nan
+            index = np.nan
+
+
+        #-----
+        # Case 7: Going beyond timeframe, checking deployed buses and updating SS
+        elif (((t>T) and
+              (next_bus_e(buses)[0]==time_check) and
+              (next_bus_e(buses)[0]!=np.inf)) or
+              ((t>T) and
+              (demand_ct[0]==time_check) and 
+              (demand_ct[0]!=np.inf) and 
+              (bus_chk==-1))):
+            
+            #print('\tUpdating next bus event beyond timeframe')
+            index = next_bus_e(buses)[2]
+            t_updt = buses[index].time_arr.pop(0)
+            bus_e = buses[index].event_arr.pop(0)
+            diff_t = prev_time[index]
+            
+            if (bus_e==1):
+                mul_c = running_consumption
+            elif (bus_e==0)and(buses[index].state==1):
+                mul_c = service_consumption
+            elif (bus_e==0)and(buses[index].state==0):                       # different for 'refill' and 'recharge' 
+                mul_c = refuel_consumption                                   # difference from 90 for refill
+            buses[index].charge = buses[index].charge - (t_updt - diff_t)*mul_c*conversion_factor
+
+            ss_table = SS_update(ss_table, diff_t, buses, dct_flag, bus_e, t_updt, index)
+            t = t_updt
+            prev_time[index] = t
+            
+            # if its the last event for the bus, update bus parameters to standstill
+            if buses[index].next_e()==np.inf:
+                buses[index].state = -1
+                buses[index].route = None
+                buses[index].time_arr = list()
+                buses[index].event_arr = list()
+                prev_time[index] = np.nan
+            index = np.nan
+            t_updt = np.nan
+            bus_e = np.nan
+
+        #-----
+        # Case 8: All demands are completed outside the timeframe 
+        elif ((t>T) and
+              (time_check==np.inf)):
+
+            #print('\tJumping to EOD')
+            t_updt = np.inf        
+            ss_table = SS_update(ss_table, t, buses, dct_flag, bus_e, t_updt)
+            t = t_updt    
+
+
+
+        ##print('\tDemands -', demand_ct[:10], demand_at[:10], demand_r[:10], demand_c[:10])
+        ##print('\tdct_flag -', dct_flag)
+
+        # updating the current demand - if demand exists it'll automatically be updated
+        for k in range(dct_flag):
+            demand_ct[k] = t
+        
+        #checking alternative
+        #if (refuel_index!=-1):
+        #    refuel_index = -1
+        #else:
+        #    for k in range(dct_flag):
+        #        demand_ct[k] = t
+            
+        
+        
+        ##print('\tDemands -', demand_ct[:10], demand_at[:10], demand_r[:10], demand_c[:10])
+        ##print('\tdct_flag -', dct_flag)
+        #print('t -', t)
+    
+    return ss_table, bd_table
 
