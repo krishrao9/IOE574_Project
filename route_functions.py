@@ -253,6 +253,8 @@ def fleet_simulation(t, T, routes, buses, refuel, running_consumption, service_c
     # previous times for fleet
     prev_time = [np.nan]*len(buses)
     
+    
+    t_check = []
     # Simulate! Simulate! Simulate!        
     while (t<T)or(time_check!=np.inf):
         #print('---\nNew Event')
@@ -282,12 +284,13 @@ def fleet_simulation(t, T, routes, buses, refuel, running_consumption, service_c
         #-----
         # Case 1: Sending low-fuel buses to refuel
         refuel_index = unavailable_bus(buses, min(demand_c))
-        if (#((t<T) or (time_check!=np.inf) or (dct_flag>0)) and
+        if ((time_check!=np.inf) and ((t<T) or (dct_flag>0)) and
             (refuel_index!=-1) and
             (buses_status(buses)[1]<refuel_stations)): 
             # and(refuel_index!=np.inf)):- might create complications
             dem_ct, dem_at, dem_c = np.nan, np.nan, np.nan
             #print('\tSending Bus for Refuel')
+            msg = 'Sending Bus for Refuel'
             buses[refuel_index].assign_route(routes, refuel, t)
             prev_time[refuel_index] = t
             bus_e = 0
@@ -308,6 +311,7 @@ def fleet_simulation(t, T, routes, buses, refuel, running_consumption, service_c
               (bus_chk!=-1)):
 
             #print('\tDeploying Bus')
+            msg = 'Deploying Bus'
             dem_ct, dem_at = demand_ct.pop(0), demand_at.pop(0)
             dem_c, dem_r = demand_c.pop(0), demand_r.pop(0)
             index = available_bus(buses, dem_c)
@@ -334,6 +338,7 @@ def fleet_simulation(t, T, routes, buses, refuel, running_consumption, service_c
               ((buses_status(buses)[0]>0) or (buses_status(buses)[1]>0))):
 
             #print('\tUpdating next bus event')
+            msg = 'Updating next bus event'
             index = next_bus_e(buses)[2]
             t_updt = buses[index].time_arr.pop(0)
             bus_e = buses[index].event_arr.pop(0)
@@ -370,7 +375,8 @@ def fleet_simulation(t, T, routes, buses, refuel, running_consumption, service_c
               (demand_ct[0]!=np.inf) and 
               (bus_chk==-1)):
             #print('\tJumping to next demand')
-            t = demand_ct[dct_flag].copy()
+            msg = 'Jumping to next demand'
+            t = next_bus_e(buses)[0]
             #dct_flag += 1
         
               
@@ -380,6 +386,7 @@ def fleet_simulation(t, T, routes, buses, refuel, running_consumption, service_c
               (time_check==np.inf)):
 
             #print('\tJumping to EOD')
+            msg = 'Jumping to EOD'
             t_updt = T
 
             ss_table = SS_update(ss_table, t, buses, dct_flag, bus_e, t_updt)
@@ -394,6 +401,7 @@ def fleet_simulation(t, T, routes, buses, refuel, running_consumption, service_c
               (bus_chk!=-1)):
 
             #print('\tDeploying Bus beyond timeframe')
+            msg = 'Deploying Bus beyond timeframe'
             dem_ct, dem_at = demand_ct.pop(0), demand_at.pop(0)
             dem_c, dem_r = demand_c.pop(0), demand_r.pop(0)
             index = available_bus(buses, dem_c)
@@ -423,6 +431,7 @@ def fleet_simulation(t, T, routes, buses, refuel, running_consumption, service_c
               (bus_chk==-1))):
             
             #print('\tUpdating next bus event beyond timeframe')
+            msg = 'Updating next bus event beyond timeframe'
             index = next_bus_e(buses)[2]
             t_updt = buses[index].time_arr.pop(0)
             bus_e = buses[index].event_arr.pop(0)
@@ -457,6 +466,7 @@ def fleet_simulation(t, T, routes, buses, refuel, running_consumption, service_c
               (time_check==np.inf)):
 
             #print('\tJumping to EOD')
+            msg = 'Jumping to EOD'
             t_updt = np.inf        
             ss_table = SS_update(ss_table, t, buses, dct_flag, bus_e, t_updt)
             t = t_updt    
@@ -482,7 +492,23 @@ def fleet_simulation(t, T, routes, buses, refuel, running_consumption, service_c
         ##print('\tDemands -', demand_ct[:10], demand_at[:10], demand_r[:10], demand_c[:10])
         ##print('\tdct_flag -', dct_flag)
         #print('t -', t)
-    
+        
+        if len(t_check)<5:
+            t_check.append(t)
+        else:
+            t_check.pop(0)
+            t_check.append(t)
+        if (len(t_check)==5)and(t_check[0]==max(t_check)):
+            print('Stuck in a loop!')
+            print(msg)
+            ss_table.to_parquet('ss_check.parquet')
+            bd_table.to_parquet('bd_check.parquet')
+            print('\tTime -', t)
+            print('\tTime Check -', time_check)
+            print('\tDemands -', demand_ct[:6], demand_at[:6], demand_r[:6], demand_c[:6])
+            print('\tdct_flag -', dct_flag)
+            
+            
     return ss_table, bd_table
 
 
@@ -529,7 +555,7 @@ def fleet_simulation_varred(t, T, routes, event_array, time_array, buses, refuel
         #-----
         # Case 1: Sending low-fuel buses to refuel
         refuel_index = unavailable_bus(buses, min(demand_c))
-        if (#((t<T) or (time_check!=np.inf)or(dct_flag>0)) and
+        if (((t<T) or(dct_flag>0)) and  # or (time_check!=np.inf)
             (refuel_index!=-1) and
             (buses_status(buses)[1]<refuel_stations)): 
             # and(refuel_index!=np.inf)):- might create complications
@@ -619,7 +645,8 @@ def fleet_simulation_varred(t, T, routes, event_array, time_array, buses, refuel
               (demand_ct[0]!=np.inf) and 
               (bus_chk==-1)):
             #print('\tJumping to next demand')
-            t = demand_ct[dct_flag].copy()
+            msg = 'Jumping to next demand'
+            t = next_bus_e(buses)[0]
             #dct_flag += 1
         
               
@@ -774,8 +801,8 @@ def inv_ecdf(target, title):
     numbs = np.array(target)
     ecdf = sm.distributions.ECDF(numbs)
     x = np.linspace(min(numbs), max(numbs), len(target))
-    y = ecdf(x)
-    plt.step(x, 1-y, color='r')
+    y = 1-ecdf(x)
+    plt.step(x, y, color='r')
     plt.xlabel(title)
     plt.ylabel('Inverse CDF(P)')
     plt.title('Inverse Empirical CDF of ' + title)
