@@ -370,10 +370,9 @@ def fleet_simulation(t, T, routes, buses, refuel, running_consumption, service_c
         
         #-----
         # Case 4: Jumping to next demand 
-        elif ((t<T) and
+        elif ((t<T) and (bus_chk==-1) and
               (demand_ct[0]==time_check) and 
-              (demand_ct[0]!=np.inf) and 
-              (bus_chk==-1)):
+              (demand_ct[0]!=np.inf)):
             #print('\tJumping to next demand')
             msg = 'Jumping to next demand'
             t = next_bus_e(buses)[0]
@@ -460,8 +459,19 @@ def fleet_simulation(t, T, routes, buses, refuel, running_consumption, service_c
             t_updt = np.nan
             bus_e = np.nan
 
+            
         #-----
-        # Case 8: All demands are completed outside the timeframe 
+        # Case 8: Jumping to next demand 
+        elif ((t>T) and (bus_chk==-1) and
+              (demand_ct[0]==time_check) and 
+              (demand_ct[0]!=np.inf)):
+            #print('\tJumping to next demand')
+            msg = 'Jumping to next demand'
+            t = next_bus_e(buses)[0]
+            #dct_flag += 1
+        
+        #-----
+        # Case 9: All demands are completed outside the timeframe 
         elif ((t>T) and
               (time_check==np.inf)):
 
@@ -477,6 +487,7 @@ def fleet_simulation(t, T, routes, buses, refuel, running_consumption, service_c
         ##print('\tdct_flag -', dct_flag)
 
         # updating the current demand - if demand exists it'll automatically be updated
+        demand_ct = list(np.sort(demand_ct))
         for k in range(dct_flag):
             demand_ct[k] = t
         
@@ -492,7 +503,7 @@ def fleet_simulation(t, T, routes, buses, refuel, running_consumption, service_c
         ##print('\tDemands -', demand_ct[:10], demand_at[:10], demand_r[:10], demand_c[:10])
         ##print('\tdct_flag -', dct_flag)
         #print('t -', t)
-        
+    
         if len(t_check)<5:
             t_check.append(t)
         else:
@@ -728,14 +739,26 @@ def fleet_simulation_varred(t, T, routes, event_array, time_array, buses, refuel
             bus_e = np.nan
 
         #-----
-        # Case 8: All demands are completed outside the timeframe 
+        # Case 8: Jumping to next demand 
+        elif ((t>T) and (bus_chk==-1) and
+              (demand_ct[0]==time_check) and 
+              (demand_ct[0]!=np.inf)):
+            #print('\tJumping to next demand')
+            msg = 'Jumping to next demand'
+            t = next_bus_e(buses)[0]
+            #dct_flag += 1
+        
+        #-----
+        # Case 9: All demands are completed outside the timeframe 
         elif ((t>T) and
               (time_check==np.inf)):
 
             #print('\tJumping to EOD')
+            msg = 'Jumping to EOD'
             t_updt = np.inf        
             ss_table = SS_update(ss_table, t, buses, dct_flag, bus_e, t_updt)
             t = t_updt    
+
 
 
 
@@ -743,6 +766,8 @@ def fleet_simulation_varred(t, T, routes, event_array, time_array, buses, refuel
         ##print('\tdct_flag -', dct_flag)
 
         # updating the current demand - if demand exists it'll automatically be updated
+        
+        demand_ct = list(np.sort(demand_ct))
         for k in range(dct_flag):
             demand_ct[k] = t
         
@@ -752,8 +777,6 @@ def fleet_simulation_varred(t, T, routes, event_array, time_array, buses, refuel
         #else:
         #    for k in range(dct_flag):
         #        demand_ct[k] = t
-            
-        
         
         ##print('\tDemands -', demand_ct[:10], demand_at[:10], demand_r[:10], demand_c[:10])
         ##print('\tdct_flag -', dct_flag)
