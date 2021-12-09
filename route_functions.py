@@ -17,6 +17,9 @@ import pandas as pd
 import numpy as  np
 import string as str
 import numpy.random as rand
+import matplotlib.pyplot as plt
+import scipy.stats as st
+import statsmodels.api as sm
 
 
 def route_time(routes, route_c, t):
@@ -68,52 +71,52 @@ def route_time(routes, route_c, t):
 
 
 class bus:
-    def __init__(self, charge, charge_std):          # Class initialization
+    def __init__(self, charge, charge_std):            # Class initialization
         self.charge = round(rand.normal(charge, charge_std), 3)
-        self.state = -1          # deployed = 1, refill = 0, standstill = -1
-        self.route = None        # route in string, eg. '1', 'refill', 'recharge' 
-        self.time_arr = list()   # array containing travel or stop service times for the bus
-        self.event_arr = list()  # array to denote travel or stop service state
+        self.state = -1                                # deployed = 1, refill = 0, standstill = -1
+        self.route = None                              # route in string, eg. '1', 'refill', 'recharge' 
+        self.time_arr = list()                         # array containing travel or stop service times for the bus
+        self.event_arr = list()                        # array to denote travel or stop service state
         
     def assign_route(self, routes, route_c, t):        # assigning a specific route to the bus
         self.time_arr, self.event_arr = route_time(routes, route_c, t)
         self.route = route_c
-        if (route_c=='refill')or(route_c=='recharge'):      # deployed = 1, refill = 0, standstill = -1
+        if (route_c=='refill')or(route_c=='recharge'): # deployed = 1, refill = 0, standstill = -1
             self.state = 0
         elif route_c.isnumeric():
             self.state = 1
     
-    def assign_route_varred(self, e_array, t_array, route_c, t):        # assigning a specific route to the bus
+    def assign_route_varred(self, e_array, t_array, route_c, t):  # assigning a specific route to the bus
         self.time_arr, self.event_arr = list(t_array), list(e_array)
         self.route = route_c
-        if (route_c=='refill')or(route_c=='recharge'):      # deployed = 1, refill = 0, standstill = -1
+        if (route_c=='refill')or(route_c=='recharge'):  # deployed = 1, refill = 0, standstill = -1
             self.state = 0
         elif route_c.isnumeric():
             self.state = 1
     
-    def next_t(self):            # passing the next event time
+    def next_t(self):                       # passing the next event time
         if len(self.time_arr)==0:
             return np.inf
         else:
             return self.time_arr[0]
     
-    def next_e(self):            # passing the next event type
+    def next_e(self):                       # passing the next event type
         if len(self.event_arr)==0:
             return np.inf
         else:
             return self.event_arr[0]
         
-    def last_t(self):            # passing the last event time for a route
+    def last_t(self):                       # passing the last event time for a route
         if len(self.event_arr)==0:
             return np.inf
         else:
             return self.time_arr[len(self.event_arr)-1]
     
-    def info(self):
-        bus_dict ={'charge': self.charge,
-                   'state' : self.state,
-                   'route' : self.route,
-                   'event' : self.event_arr[0]}    # all details passed as a dictionary for table insertion
+    def info(self):                         # all details passed as a dictionary for table insertion
+        bus_dict = {'charge': self.charge,
+                    'state' : self.state,
+                    'route' : self.route,
+                    'event' : self.event_arr[0]}
         return bus_dict
 
 
@@ -123,10 +126,10 @@ def gen_demands(routes, T):
     demand_r, demand_t, demand_c = [], [], []
     for row in dem.itertuples(index=False):
         if row[0]<=routes:
-            # denerating demands
+        # generating demands
             route, a, b, c, d, charge = np.str_(row[0]), row[1], row[2], row[3], row[4], row[5]
-            demand = np.ceil(a*np.sin((t_arr+c)/d) + b)             # a distribution can also be used
-            # generating times wrt demands
+            demand = np.ceil(a*np.sin((t_arr+c)/d) + b)        # a distribution can also be used
+        # generating times wrt demands
             for i, t in enumerate(t_arr):
                 if demand[i]>0:
                     for t_d in range(0, 60, int(60/demand[i])):
@@ -279,10 +282,10 @@ def fleet_simulation(t, T, routes, buses, refuel, running_consumption, service_c
         #-----
         # Case 1: Sending low-fuel buses to refuel
         refuel_index = unavailable_bus(buses, min(demand_c))
-        if (#(t<T) and
+        if (#((t<T) or (time_check!=np.inf) or (dct_flag>0)) and
             (refuel_index!=-1) and
             (buses_status(buses)[1]<refuel_stations)): 
-            # or((dct_flag>0)and(refuel_index!=np.inf)):- might create complications
+            # and(refuel_index!=np.inf)):- might create complications
             dem_ct, dem_at, dem_c = np.nan, np.nan, np.nan
             #print('\tSending Bus for Refuel')
             buses[refuel_index].assign_route(routes, refuel, t)
@@ -294,7 +297,7 @@ def fleet_simulation(t, T, routes, buses, refuel, running_consumption, service_c
             bd_table = BD_update(bd_table, t_updt, dem_ct, dem_at, dem_c, buses, refuel_index)
 
             t = t_updt
-            #refuel_index = -1
+            refuel_index = -1
 
 
         #-----
@@ -315,9 +318,7 @@ def fleet_simulation(t, T, routes, buses, refuel, running_consumption, service_c
 
             ss_table = SS_update(ss_table, t, buses, dct_flag, bus_e, t_updt, index, dem_ct, dem_at, dem_c)
             bd_table = BD_update(bd_table, t_updt, dem_ct, dem_at, dem_c, buses, index)
-            ##print(buses[index].event_arr, buses[index].time_arr)
             dct_flag -= 1
-            ##print(prev_time[index], t_updt)
             t = t_updt
 
             dem_ct, dem_at, dem_c, dem_r = np.nan, np.nan, np.nan, np.nan
@@ -342,8 +343,8 @@ def fleet_simulation(t, T, routes, buses, refuel, running_consumption, service_c
                 mul_c = running_consumption
             elif (bus_e==0)and(buses[index].state==1):
                 mul_c = service_consumption
-            elif (bus_e==0)and(buses[index].state==0):                       # different for 'refill' and 'recharge' 
-                mul_c = refuel_consumption                                   # difference from 90 for refill
+            elif (bus_e==0)and(buses[index].state==0):
+                mul_c = refuel_consumption
             buses[index].charge = round(buses[index].charge - (t_updt - diff_t)*mul_c*conversion_factor, 3)
 
             ss_table = SS_update(ss_table, diff_t, buses, dct_flag, bus_e, t_updt, index)
@@ -528,10 +529,10 @@ def fleet_simulation_varred(t, T, routes, event_array, time_array, buses, refuel
         #-----
         # Case 1: Sending low-fuel buses to refuel
         refuel_index = unavailable_bus(buses, min(demand_c))
-        if (#(t<T) and
+        if (#((t<T) or (time_check!=np.inf)or(dct_flag>0)) and
             (refuel_index!=-1) and
             (buses_status(buses)[1]<refuel_stations)): 
-            # or((dct_flag>0)and(refuel_index!=np.inf)):- might create complications
+            # and(refuel_index!=np.inf)):- might create complications
             dem_ct, dem_at, dem_c = np.nan, np.nan, np.nan
             #print('\tSending Bus for Refuel')
             buses[refuel_index].assign_route(routes, refuel, t)
@@ -543,7 +544,7 @@ def fleet_simulation_varred(t, T, routes, event_array, time_array, buses, refuel
             bd_table = BD_update(bd_table, t_updt, dem_ct, dem_at, dem_c, buses, refuel_index)
 
             t = t_updt
-            #refuel_index = -1
+            refuel_index = -1
 
 
         #-----
@@ -732,3 +733,52 @@ def fleet_simulation_varred(t, T, routes, event_array, time_array, buses, refuel
         #print('t -', t)
     
     return ss_table, bd_table
+
+
+def cost_analysis(n_buses, replicates, refuel, ss_table, bd_table, emp_rate, fuel_rate, delay_rate, refuel_consumption):
+    ss_table['Process_Time'].replace({np.inf: 0}, inplace=True)
+    ss_table['Demand_Charge'].replace({np.nan: -1}, inplace=True)
+    cost_ss = ss_table[(ss_table['Demand_Charge'])==-1][['Bus', 'Route', 'Event', 'Process_Time']].dropna()
+
+    runcost_ss = cost_ss[cost_ss['Event']==1]
+    sercost_ss = cost_ss[(cost_ss['Event']!=1)&(cost_ss['Route']!=refuel)]
+    refcost_ss = cost_ss[(cost_ss['Event']!=1)&(cost_ss['Route']==refuel)]
+    runcost_ss = runcost_ss[['Bus', 'Process_Time']].groupby('Bus').sum()/replicates
+    sercost_ss = sercost_ss[['Bus', 'Process_Time']].groupby('Bus').sum()/replicates
+    refcost_ss = refcost_ss[['Bus', 'Process_Time']].groupby('Bus').sum()/replicates
+
+    run_time = round(np.sum(runcost_ss['Process_Time']), 2)
+    ser_time = round(np.sum(sercost_ss['Process_Time']), 2)
+    ref_time = round(np.sum(refcost_ss['Process_Time']), 2)
+    emp_cost = round((run_time + ser_time + ref_time)*emp_rate/60)
+    fuel_cost = round(ref_time*refuel_consumption*-1*fuel_rate)
+    tot_delay = round(sum(np.nan_to_num(np.array(bd_table['Demand_Current'] - bd_table['Demand_Actual']))), 2)
+    delay_cost = round(tot_delay* delay_rate)
+    return run_time, ser_time, ref_time, emp_cost, fuel_cost, delay_cost
+
+
+# +
+def ecdf(target, title):
+    numbs = np.array(target)
+    ecdf = sm.distributions.ECDF(numbs)
+    x = np.linspace(min(numbs), max(numbs), len(target))
+    y = ecdf(x)
+    plt.step(x, y, color='r')
+    plt.xlabel(title)
+    plt.ylabel('CDF(P)')
+    plt.title('Empirical CDF of ' + title)
+    plt.show()
+    return
+
+def inv_ecdf(target, title):
+    numbs = np.array(target)
+    ecdf = sm.distributions.ECDF(numbs)
+    x = np.linspace(min(numbs), max(numbs), len(target))
+    y = ecdf(x)
+    plt.step(x, 1-y, color='r')
+    plt.xlabel(title)
+    plt.ylabel('Inverse CDF(P)')
+    plt.title('Inverse Empirical CDF of ' + title)
+    #plt.gca().invert_yaxis()
+    plt.show()
+    return
